@@ -7,11 +7,24 @@ description: Use when the user dictates an app, site, bot, or feature to build e
 
 ## Overview
 
-Autopilot drives a dictated idea through the mattpocock/skills pipeline — setup → grill → spec → tickets → implement — **in one dialogue**, without making the user approve each stage. By default the user answers questions once at the start and receives a working project at the end. Core principle: **the order is the product** — code is written only in the last phase, and every ticket is implemented by a separate subagent with a fresh, isolated context.
+Autopilot drives a dictated idea through the mattpocock/skills pipeline — setup → grill → spec → tickets → implement → review — **in one dialogue**, without making the user approve each stage. By default the user answers questions once at the start and receives a working project at the end. Core principle: **the order is the product** — code is written only after the tickets exist, and every ticket is implemented by a separate subagent with a fresh, isolated context.
 
 This skill only orchestrates — the phases below **invoke the pipeline skills and follow their rules**; nothing here restates them. What Autopilot adds: which human gates to remove — the [mode](#modes) decides how many — and how to run implementation hands-free.
 
-**Prerequisite:** the pipeline skills must already be installed — `setup-matt-pocock-skills`, `grilling`, `to-spec`, `to-tickets`, `implement`. If any is missing, **stop and ask the user to install it themselves**; the README lists the command. Never install packages, fetch remote code, or run network commands on the user's behalf.
+**Prerequisite:** the pipeline skills from `mattpocock/skills` — autopilot installs missing ones itself; see [Bootstrap](#bootstrap).
+
+## Bootstrap — before Phase 0, all modes
+
+Autopilot invokes these skills: `setup-matt-pocock-skills`, `grilling`, `domain-modeling`, `grill-with-docs`, `to-spec`, `to-tickets`, `implement`, `code-review`. At the start of every run, check the agent's skills directory (`~/.claude/skills/` for Claude Code) and install **only the missing ones**, non-interactively, from the official repo:
+
+```bash
+npx -y skills@latest add mattpocock/skills -g --skill <missing,comma,separated> -y
+```
+
+- **This is the only sanctioned network install**: the pinned repo `mattpocock/skills`, the named skills, nothing else. No other package, no other repo, no other remote code — ever, in any mode.
+- Verify after installing: each skill's `SKILL.md` must exist on disk. Install failed (offline, no `npx`) → **stop** and show the user that exact command to run themselves.
+- Exception: `grill-with-docs` alone never blocks a run — when `grilling` + `domain-modeling` are both present, Phase 1's fallback is identical to it.
+- A skill installed mid-session may not appear in the agent's skill listing until restart — in that case read its `SKILL.md` from disk and follow it directly; the file is the skill.
 
 ## Modes
 
@@ -47,7 +60,8 @@ Everything typed after `/autopilot` splits into two parts: **the mode** (optiona
 | 2 Spec | auto | auto | show → wait for explicit «ок» |
 | 3 Tickets | auto, notify only | auto, stoppable | quiz on → wait for explicit «ок» |
 | 4 Implement | auto | auto | auto |
-| 5 Finish | report + Assumptions | report | report |
+| 5 Review | auto — one fix round | auto — one fix round | auto — one fix round |
+| 6 Finish | report + Assumptions | report | report |
 
 ### Phase 0 — Setup (once per repo, before everything)
 
@@ -58,22 +72,22 @@ The setup skill is interactive, but Autopilot answers its questions for the user
 - **Issue tracker → local markdown.** Specs and tickets live as files in the repo under `.scratch/<feature-slug>/` — visible to the user, no GitHub/GitLab account, no network. Record it from the setup skill's `issue-tracker-local.md` template into `docs/agents/issue-tracker.md`.
 - **Triage labels → the defaults, unchanged** (`needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, `wontfix`). Asked only when the `triage` skill is installed — answer «yes, keep defaults» and move on.
 - **Domain docs → single-context.** One `CONTEXT.md` + `docs/adr/` at the repo root; a fresh vibecoding project is never a monorepo. The setup skill itself says to write this without asking.
-- **File to edit → `CLAUDE.md` if it exists, else `AGENTS.md` if it exists, else create `AGENTS.md`.** The setup skill says to ask the user here; Autopilot instead creates `AGENTS.md` and notes the choice in the Phase 5 report.
+- **File to edit → `CLAUDE.md` if it exists, else `AGENTS.md` if it exists, else create `AGENTS.md`.** The setup skill says to ask the user here; Autopilot instead creates `AGENTS.md` and notes the choice in the Phase 6 report.
 
 Derive the **feature-slug** from the dictated idea (short kebab-case) at this point — it names the `.scratch/` directory for the whole run.
 
 ### Phase 1 — Grill (the human gate in semi and manual)
 
-Run skill `/grilling` on the dictated idea. Autopilot adds three rules:
+Run skill `/grill-with-docs` on the dictated idea — or, when it is not installed, `/grilling` with the `domain-modeling` skill active alongside (the author's README defines grill-with-docs as exactly that pair). Either way the domain model is written **inline, during the interview**: terms go into `CONTEXT.md` as they crystallise, decisions that meet the ADR bar go into `docs/adr/` — the files Phase 0 already provisioned. Autopilot adds three rules:
 
 - **Blocking unknowns first.** Anything the build depends on but the user hasn't decided (payment provider, hosting, which accounts exist) goes into the first three questions — never the finish line.
 - **Decisions, never secrets.** Ask *which* provider and *whether* an account exists. Never ask for a key, token, password, or connection string — see [Secrets](#secrets).
 - **Never answer for the user.** No silent assumptions, no fabricated content. Forced to proceed past an unknown → mark it `PLACEHOLDER — уточнить у пользователя`. In **full** the decisions do get made for the user — labelled, never silent; the self-brief below draws the line.
 - **Cap: 5–8 questions** — in **manual** the cap is lifted: keep asking until nothing blocking is left. Record the decisions verbatim — Phase 2 synthesizes from this transcript.
 
-**In full mode there is no interview.** Run the same checklist against yourself and write a **self-brief** in place of the transcript — every blocking unknown gets an answer, and the answer is labelled by kind:
+**In full mode there is no interview.** Run the same checklist against yourself and write a **self-brief** in place of the transcript — every blocking unknown gets an answer, and the answer is labelled by kind. The domain model is still written: terms the self-brief settles go into `CONTEXT.md`, and an ASSUMPTION that meets the ADR bar (hard to reverse, surprising, real trade-off) gets an ADR:
 
-- **Decisions are yours to make.** Stack, structure, provider, data model: pick the option that runs on the user's machine **without a third-party account and without money**, and record it as `ASSUMPTION — принято за пользователя: ...`. That list is a required section of the Phase 5 report.
+- **Decisions are yours to make.** Stack, structure, provider, data model: pick the option that runs on the user's machine **without a third-party account and without money**, and record it as `ASSUMPTION — принято за пользователя: ...`. That list is a required section of the Phase 6 report.
 - **Facts about the user are not yours to invent.** Their prices, texts, accounts, business rules — never fabricated. They become `PLACEHOLDER` in the spec, filler content in the code, and a line in the final report.
 - **A paid or account-bound service becomes an adapter**, not a guess: one interface, a local stub behind it, the real key an empty variable name in `.env.example`.
 
@@ -109,9 +123,17 @@ Run skill `/to-tickets`, with one override in **full** and **semi**: **skip the 
 - After each ticket, report **one plain-language line** («Можно загрузить клиентов из файла — 3 из 8 готово»). No diffs, no jargon.
 - Ticket failed → retry **once** in a fresh context with the error attached. Second failure → stop, tell the user in plain language what is blocking and what you need.
 
-### Phase 5 — Finish
+### Phase 5 — Review (identical in all modes)
 
-Full test suite once, then a final report in the user's language: what was built and the exact command to run it; what was NOT built (the spec's Out of Scope list); open items — placeholders, environment variables the user still has to fill in (**names only**), manual steps left. The report names the artifacts by path: `.scratch/<feature-slug>/spec.md`, the `.scratch/<feature-slug>/issues/` tickets, and `PROGRESS.md`.
+Run skill `/code-review` once over the whole build: the fixed point is the commit before the first ticket (**capture it at the start of Phase 4**), the spec source is `.scratch/<feature-slug>/spec.md`. The skill's two sub-agents run as written; Autopilot only decides what happens to the findings — hands-free, like Phase 4:
+
+- **Spec-axis findings** (missing, partial or wrongly implemented requirements) and **hard standards violations** become fix tickets in `.scratch/<feature-slug>/issues/` and go through the Phase 4 machinery — fresh subagent per ticket, one commit, `PROGRESS.md` line.
+- **One review → one fix round — no second review.** Doubt left after the fix round goes into the Phase 6 report, not another loop.
+- **Judgement calls** (baseline smells) and **scope creep** are never auto-fixed — they are listed in the Phase 6 report in plain language. Churning working code on a heuristic is how hands-free builds break.
+
+### Phase 6 — Finish
+
+Full test suite once, then a final report in the user's language: what was built and the exact command to run it; what was NOT built (the spec's Out of Scope list); what the review found — fixed findings in one line, unfixed judgement calls and scope creep each as a plain-language item; open items — placeholders, environment variables the user still has to fill in (**names only**), manual steps left. The report names the artifacts by path: `.scratch/<feature-slug>/spec.md`, the `.scratch/<feature-slug>/issues/` tickets, and `PROGRESS.md`.
 
 **In full mode the report opens with «Решения, принятые за вас»** — every `ASSUMPTION` from the self-brief, in plain language, each with the one-line reason it was chosen. The user never asked for these; they have the right to see all of them in one place.
 
@@ -141,6 +163,9 @@ Credentials are the user's to hold, not the agent's to handle.
 | «Режим не назвали — спрошу, какой» | Не назвали — полуавтомат. Вопрос о режиме сам по себе лишний вопрос. |
 | «Тикеты и спека видны в чате — зачем файлы» | Файл в `.scratch/` и есть тикет; чат — только его пересказ. Диалог умрёт, файлы останутся. |
 | «Спрошу, какой трекер настроить» | Вопросы setup-скилла автопилот решает сам: локальный трекер, дефолтные лейблы, single-context. Это про процесс, не про продукт. |
+| «Тесты зелёные — ревью лишнее» | Тесты не сверяют код со спекой. Один прогон `/code-review` — часть конвейера, а не опция. |
+| «Ревью нашло smell — перепишу всё» | Smell — это judgement call: строка в отчёте, не правка. Автофиксу подлежат только пропущенные требования спеки и жёсткие нарушения стандартов. |
+| «Раз bootstrap ставит скиллы — поставлю заодно и библиотеку» | Bootstrap — это один pinned-репозиторий и фиксированный список скиллов. Любая другая установка из сети — за пользователем, во всех режимах. |
 
 ## Red Flags — start the phase over
 
@@ -155,9 +180,11 @@ Credentials are the user's to hold, not the agent's to handle.
 - Asking the user to review tickets, granularity, or code (outside manual, where spec and tickets are gates by design).
 - Two tickets in one subagent context.
 - Parallel subagents editing the same files.
+- Phase 5 skipped, a second review round after the fix round, or a review finding fixed in the main context instead of through a fix ticket and a fresh subagent.
+- A grilling session that ends with an empty `CONTEXT.md` when domain terms were clearly settled during it.
 - Silent assumption not marked as PLACEHOLDER — or, in full, as ASSUMPTION in the final report.
 - Payment, hosting, or accounts first mentioned at the finish line.
 - A secret value asked for, repeated back, or written into any file, prompt, commit, or report.
-- Installing a package or fetching remote code instead of asking the user to do it.
+- Installing anything beyond the Bootstrap's pinned list — any other package, repo, or network fetch — or skipping the Bootstrap check and failing later on a missing skill.
 
 **Violating the letter of these rules is violating their spirit.**
