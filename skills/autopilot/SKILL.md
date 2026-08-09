@@ -7,6 +7,8 @@ description: Orchestrate an app, site, bot, or feature from brief to tested code
 
 Run the pipeline in order: setup → brief → spec → tickets → implement → review → finish. The invoked skills own their phases; this file defines only orchestration and overrides. Never write implementation code before the spec and tickets exist.
 
+If the brief has no single project outcome and is too broad for one spec, stop and recommend `wayfinder` when available.
+
 ## Dependencies
 
 Use:
@@ -28,6 +30,8 @@ npx --yes skills@latest add mattpocock/skills -g -s <missing skills...> -y --ful
 
 During skill bootstrap, install from no other repository and install no other skills. Verify every installed `SKILL.md`; stop with the failed command if installation fails. If only `grill-with-docs` is missing, use `grilling` with `domain-modeling`.
 
+A skill installed during the current session may not appear in discovery until restart; read its `SKILL.md` directly from disk and continue.
+
 ## Modes
 
 | Mode | Trigger | Approval gates |
@@ -39,6 +43,8 @@ During skill bootstrap, install from no other repository and install no other sk
 Announce the resolved mode before Phase 1. Default ambiguity to `semi`; if two modes are explicitly requested, ask which one. A mode change applies to the next phase. Put every stack, budget, language, deadline, and scope constraint from the user's brief into the spec.
 
 No mode bypasses approval for deploy, publish, payment, third-party messages, data deletion, or git-history rewriting.
+
+Never promise a countdown or artificial pause: `full` and `semi` continue immediately after their gates, while `manual` waits for explicit approval.
 
 ## Pipeline
 
