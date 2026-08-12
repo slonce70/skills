@@ -83,7 +83,7 @@ Run `to-tickets` and write one dependency-ordered file per ticket under `.scratc
 - `manual`: keep its quiz and wait for explicit approval.
 - `semi` and `full`: skip the quiz, show a plain-language summary, and continue.
 
-Each ticket must be a verifiable vertical slice, name its blockers, and start as `ready-for-agent`.
+Each ticket must be a verifiable vertical slice and name its blockers. For Autopilot-managed local tickets, `Status:` is an orchestration lifecycle field with values `ready-for-agent`, `in progress`, `done`, and `failed`; these explicitly extend the configured triage vocabulary. Every ticket starts as `ready-for-agent`.
 
 ### 4. Implement
 
@@ -96,7 +96,7 @@ For each ticket:
 3. Run `implement`, but use targeted checks only; Phase 6 owns the full suite, and Phase 5 owns `code-review`.
 4. On success, mark the ticket `done` and create one commit containing both implementation and status; then report one plain-language progress line.
 
-Parallelize only tickets that touch disjoint files. On failure, mark the ticket `failed` and retry once in a fresh context with the error. Stop after the second failure.
+Process tickets serially; do not run ticket subagents concurrently in the shared working tree. On failure, mark the ticket `failed` and retry once in a fresh context with the error. Stop after the second failure.
 
 Resume an interrupted run from Git history and ticket statuses; do not maintain a duplicate progress ledger.
 
@@ -110,7 +110,7 @@ Run `code-review` once from the captured baseline, using the saved spec.
 
 ### 6. Finish
 
-Run the full test suite. If it fails, create one fix ticket, use Phase 4, and rerun the suite once; stop if it still fails. Report in the user's language:
+Run the final checks permitted by the project's `CLAUDE.md` or `AGENTS.md`; if no project test policy exists, run the full suite. If the selected checks fail, create one fix ticket, use Phase 4, and rerun them once; stop if they still fail. Report in the user's language:
 
 - assumptions made in `full`;
 - what works and the exact run command;
